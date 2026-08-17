@@ -108,10 +108,24 @@ export function profileImageUrlUpload () {
         next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
         return
       }
-      if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
+
+      let isChallengeUrl = false
+      try {
+        const parsedUrl = new URL(url)
+        let hostname = parsedUrl.hostname.toLowerCase()
+        if (hostname.startsWith('[') && hostname.endsWith(']')) {
+          hostname = hostname.slice(1, -1)
+        }
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+        const isChallengePath = parsedUrl.pathname === '/solve/challenges/server-side' || parsedUrl.pathname === '/solve/challenges/server-side/'
+        isChallengeUrl = isLocalhost && isChallengePath
+      } catch {
+        isChallengeUrl = false
+      }
+
+      if (isChallengeUrl) req.app.locals.abused_ssrf_bug = true
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
-        const isChallengeUrl = url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null
         if (!isChallengeUrl && !(await isSafeUrl(url))) {
           next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
           return

@@ -14,18 +14,47 @@ import * as db from '../data/mongodb'
 export function updateProductReviews () {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = security.authenticatedUsers.from(req) // vuln-code-snippet vuln-line forgedReviewChallenge
-    db.reviewsCollection.update( // vuln-code-snippet neutral-line forgedReviewChallenge
-      { _id: req.body.id }, // vuln-code-snippet vuln-line noSqlReviewsChallenge forgedReviewChallenge
-      { $set: { message: req.body.message } },
-      { multi: true } // vuln-code-snippet vuln-line noSqlReviewsChallenge
-    ).then(
-      (result: { modified: number, original: Array<{ author: any }> }) => {
-        challengeUtils.solveIf(challenges.noSqlReviewsChallenge, () => { return result.modified > 1 }) // vuln-code-snippet hide-line
-        challengeUtils.solveIf(challenges.forgedReviewChallenge, () => { return user?.data && result.original[0] && result.original[0].author !== user.data.email && result.modified === 1 }) // vuln-code-snippet hide-line
-        res.json(result)
+    if (!user || !user.data) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const id = req.body.id
+    if (typeof id !== 'string') {
+      res.status(400).json({ error: 'Wrong Params' })
+      return
+    }
+    if (typeof req.body.message !== 'string') {
+      res.status(400).json({ error: 'Wrong Params' })
+      return
+    }
+
+    db.reviewsCollection.findOne({ _id: id }).then(
+      (review: any) => {
+        if (!review) {
+          res.status(404).json({ error: 'Not found' })
+          return
+        }
+        if (review.author !== user.data.email) {
+          res.status(403).json({ error: 'Not allowed' })
+          return
+        }
+
+        db.reviewsCollection.update( // vuln-code-snippet neutral-line forgedReviewChallenge
+          { _id: id }, // vuln-code-snippet vuln-line noSqlReviewsChallenge forgedReviewChallenge
+          { $set: { message: req.body.message } },
+          { multi: false } // vuln-code-snippet vuln-line noSqlReviewsChallenge
+        ).then(
+          (result: { modified: number, original: Array<{ author: any }> }) => {
+            challengeUtils.solveIf(challenges.noSqlReviewsChallenge, () => { return result.modified > 1 }) // vuln-code-snippet hide-line
+            challengeUtils.solveIf(challenges.forgedReviewChallenge, () => { return user?.data && result.original[0] && result.original[0].author !== user.data.email && result.modified === 1 }) // vuln-code-snippet hide-line
+            res.json(result)
+          }, (err: unknown) => {
+            res.status(500).json(err)
+          })
       }, (err: unknown) => {
         res.status(500).json(err)
-      })
+      }
+    )
   }
 }
 // vuln-code-snippet end noSqlReviewsChallenge forgedReviewChallenge
